@@ -38,7 +38,11 @@
       <compileType>
         <ccTool>
           <standard>8</standard>
-          <commandLine>-pedantic -Wall</commandLine>
+          <commandlineTool>mpiCC</commandlineTool>
+          <incDir>
+            <pElem>/usr/include/mpi</pElem>
+          </incDir>
+          <commandLine>-pedantic -Wall -O0 -lm -fopenmp</commandLine>
         </ccTool>
       </compileType>
       <item path="main.cpp" ex="false" tool="1" flavor2="0">
