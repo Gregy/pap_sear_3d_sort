@@ -9,19 +9,19 @@ CND_DISTDIR=dist
 # Debug configuration
 CND_PLATFORM_Debug=GNU-Linux-x86
 CND_ARTIFACT_DIR_Debug=dist/Debug/GNU-Linux-x86
-CND_ARTIFACT_NAME_Debug=hg
-CND_ARTIFACT_PATH_Debug=dist/Debug/GNU-Linux-x86/hg
+CND_ARTIFACT_NAME_Debug=sorty
+CND_ARTIFACT_PATH_Debug=dist/Debug/GNU-Linux-x86/sorty
 CND_PACKAGE_DIR_Debug=dist/Debug/GNU-Linux-x86/package
-CND_PACKAGE_NAME_Debug=hg.tar
-CND_PACKAGE_PATH_Debug=dist/Debug/GNU-Linux-x86/package/hg.tar
+CND_PACKAGE_NAME_Debug=sorty.tar
+CND_PACKAGE_PATH_Debug=dist/Debug/GNU-Linux-x86/package/sorty.tar
 # Release configuration
 CND_PLATFORM_Release=GNU-Linux-x86
 CND_ARTIFACT_DIR_Release=dist/Release/GNU-Linux-x86
-CND_ARTIFACT_NAME_Release=hg
-CND_ARTIFACT_PATH_Release=dist/Release/GNU-Linux-x86/hg
+CND_ARTIFACT_NAME_Release=sorty
+CND_ARTIFACT_PATH_Release=dist/Release/GNU-Linux-x86/sorty
 CND_PACKAGE_DIR_Release=dist/Release/GNU-Linux-x86/package
-CND_PACKAGE_NAME_Release=hg.tar
-CND_PACKAGE_PATH_Release=dist/Release/GNU-Linux-x86/package/hg.tar
+CND_PACKAGE_NAME_Release=sorty.tar
+CND_PACKAGE_PATH_Release=dist/Release/GNU-Linux-x86/package/sorty.tar
 #
 # include compiler specific variables
 #

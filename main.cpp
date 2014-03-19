@@ -2,323 +2,23 @@
  * File:   main.cpp
  * Author: gregy
  *
- * Created on October 10, 2013, 12:26 PM
+ * otazky: musi se lokalne seradit pred kazdym krokem shearsortu?
  */
 
 #include <cstdlib>
 #include <vector>
-#include <unordered_set>
-#include <queue>
 #include <string>
-#include <set>
-#include <bitset>
 #include <iostream>
-#include <fstream>
 #include <algorithm>
+#include <fstream>
 #include <string.h>
-#include <mpi.h>
-#include <math.h>
-// #define NDEBUG
-#include <cassert>
-#include <unistd.h>
+#include <omp.h>
+#include <sstream>
+
+#define VTYPE int
 
 using namespace std;
 
-struct HEdge 
-{
-  unsigned int first;
-  unsigned int second;
-  unsigned int label;
-
-public:
-	HEdge(unsigned int first, unsigned int second, unsigned int label) {
-		this->first = first;
-		this->second = second;
-		this->label = label;
-	}
-};
-inline bool operator<(const HEdge& a, const HEdge& b)
-{
-	if(a.first < b.first) {
-		return true;
-	}
-	if(a.first > b.first) {
-		return false;
-	}
-	
-	if(a.second <= b.second) {
-		return true;
-	}
-	
-	return false;
-}
-
-
-class Graph {
-    vector<vector<unsigned int> > nodes;
-
-public:
-    Graph(unsigned int size):nodes(size) {
-    }
-
-    void addNeighbor(unsigned int node, unsigned int node2) {
-        this->nodes.at(node).push_back(node2);
-        this->nodes.at(node2).push_back(node);
-    }
-
-    vector<unsigned int> getNeighbors(unsigned int node) const {
-        return this->nodes.at(node);
-    }
-    bool isNeighbor(unsigned int node, unsigned int node2) const{
-        return find(this->nodes.at(node).begin(), this->nodes.at(node).end(), node2) != this->nodes.at(node).end();
-    }
-    void printGraph() {
-        char *line = new char[this->nodes.size()+1];
-        line[this->nodes.size()] = 0;
-
-        for(unsigned int i=0;i<this->nodes.size();i++) {
-            memset(line, '0', this->nodes.size());
-            for(unsigned int ii=0;ii<this->nodes[i].size();ii++) {
-                line[this->nodes[i][ii]] = '1';
-            }
-
-            cout << line << endl;
-        }
-        delete[] line;
-    }
-    void printToDot(bool printEnd = true) {
-        cout << "graph graphname {" << endl;
-        for(unsigned int i=0;i<this->nodes.size();i++) {
-            for(unsigned int ii=0;ii<this->nodes[i].size();ii++) {
-                if(this->nodes[i][ii] > i) {
-		    cout << i << " -- " << this->nodes[i][ii] << ";" << endl;
-                }
-            }
-        }
-        if(printEnd) {
-            cout << "}"<< endl;
-        }
-    }
-    void printToDot(const vector<unsigned int> &path) {
-        this->printToDot(false);
-		double radius = path.size()*0.2;
-        for(unsigned int i=0;i<path.size();i++) {
-			double x = cos(((M_PI*2.0)/((double)path.size()))*((double)i))*radius;
-			double y = sin(((M_PI*2.0)/((double)path.size()))*((double)i))*radius;
-			cout << path[i] << "[label=\""<< path[i] << "\", pos=\"" << x << "," << y << "!\"];"<<endl;
-			if(i != path.size()-1) {
-				cout << path[i] << " -- " << path[i+1] << "[label=\"" << i << "\"];"<<endl;
-			}
-        }
-    	cout << path.back() << " -- " << 0 << "[label=\"" << path.size()-1 << "\"];"<<endl;
-        cout << "}" << endl;
-    }
-
-    unsigned int getNodeCount() const{
-        return this->nodes.size();
-    }
-    
-};
-
-class FileGraphLoader {
-public:
-    static int load(string path, Graph** graph) {
-        ifstream in_stream;
-	string line;
-	unsigned int size;
-        
-        try {
-	in_stream.open(path);
-
-        in_stream >> line;
-	    size = std::stoi(line);
-        }
-        catch(exception& e) {
-            return -1;
-        }
-	
-        *graph = new Graph(size);
-	for(unsigned int line_n=0;line_n<size; line_n++)
-	{
-            if(in_stream.eof()) {
-                return -2;
-            }
-	    in_stream >> line;
-            if(line.length() != size) {
-                return -2;
-            }
-            for(unsigned int i =0;i<=line_n;i++) {
-                if(line[i] == '1') {
-                    (*graph)->addNeighbor(line_n, i);
-                }
-            }
-	}
-
-        return 0;
-    }
-};
-
-class SearchState {
-   vector<unsigned int> walkedPath;
-   //state (next node to work on) for each node from walkedPath
-   vector<unsigned int> nodeState;
-   unordered_set<unsigned int> walkedNodes;
-
-public:
-    void pushNode(unsigned int node) {
-        assert(this->walkedNodes.find(node)==this->walkedNodes.end());
-        this->walkedPath.push_back(node);
-        this->walkedNodes.insert(node);
-        this->nodeState.push_back(0);
-    }
-    void removeLastNode() {
-        this->walkedNodes.erase(this->walkedPath.back());
-        this->nodeState.pop_back();
-        this->walkedPath.pop_back();
-    }
-    unsigned int getState() {
-        unsigned int ret = this->nodeState.back();
-        return ret;
-    }
-    unsigned int getLastNode() {
-        return this->walkedPath.back();
-    }
-    void setState(unsigned int s) {
-        this->nodeState[this->nodeState.size()-1] = s;
-    }
-    bool isNodeInPath(unsigned int node) {
-        if(this->walkedNodes.find(node) == this->walkedNodes.end()) {
-            return false;
-        }
-		return true;
-    }
-    unsigned int getPathLength() {
-        return this->walkedPath.size();
-    }
-    const vector<unsigned int> getPath() {
-        return this->walkedPath;
-    }
-    
-    void printPath() {
-       const vector<unsigned int> path = this->getPath();
-       for(unsigned int i=0;i<path.size();i++) {
-           cout << path[i] << " ";
-       }
-       cout << endl;
-    }
-
-    unsigned int * asArray() {
-        return this->walkedPath.data();
-    }
-};
-
-class BFSStateGenerator {
-    queue<SearchState*> states;
-public:
-    void generateStates(SearchState* initial, Graph * graph, unsigned int targetCount) {
-		states.push(initial);
-        while(states.size() < targetCount && states.size() > 0) {
-            SearchState * cur = states.front();
-            if(cur->getPathLength() == graph->getNodeCount()) {
-                cout << "Prosel jsem cely graf v generujici fazi! Koncim s generovanim driv nez bys chtel!" << endl;
-                break;
-            }
-            states.pop();
-            const vector<unsigned int> neighbors = graph->getNeighbors(cur->getLastNode());
-            for(unsigned int nextNode=cur->getState();nextNode<neighbors.size();nextNode++) {
-                if(cur->isNodeInPath(neighbors[nextNode])) {
-                    continue;
-                }
-                SearchState * next = new SearchState((*cur));
-                next->pushNode(neighbors[nextNode]);
-                states.push(next);
-            }
-            delete cur;
-        }
-    }
-    void printStates() {
-        for(unsigned int i=0; i<this->states.size();i++) {
-            cout << i <<':';
-			states.front()->printPath();
-            states.push(states.front());
-            states.pop();
-		}
-    }
-    bool hasState() {
-        return !this->states.empty();
-    }
-    SearchState * getNextState() {
-		SearchState * cur = this->states.front();
-        this->states.pop();
-        return cur;
-    }
-    void clear() {
-        while(!this->states.empty()) {
-			this->states.pop();
-        }
-    }
-	unsigned int getStatesCount() {
-		return this->states.size();
-	}
-};
-
-class DFSStateSolver {
-    SearchState * state;
-    const Graph * graph;
-
-public:
-    DFSStateSolver(SearchState * state, const Graph * graph) {
-        this->state = state;
-        this->graph = graph;
-    }
-
-    bool solve(const bool &breaker) {
-        unsigned long uppermost = state->getLastNode();
-		while(breaker) {
-            //this->printPath();
-            if(state->getPathLength() == graph->getNodeCount() && graph->isNeighbor(state->getLastNode(), 0)) {
-                //found it!
-                return true;
-            }
-            const vector<unsigned int> neighbors = graph->getNeighbors(state->getLastNode());
-            if(state->getState() >= neighbors.size()) {
-                if(state->getLastNode() == uppermost) {
-                    return false;
-                }
-                state->removeLastNode();
-                continue;
-            }
-            for(unsigned int nextNode=this->state->getState();nextNode<neighbors.size();nextNode++) {
-                state->setState(nextNode+1);
-                if(state->isNodeInPath(neighbors[nextNode])) {
-                    continue;
-                }
-                state->pushNode(neighbors[nextNode]);
-                break;
-            }
-        }
-        return false;
-    }
-    void printPath() {
-        state->printPath();
-    }
-    const vector<unsigned int> getPath() {
-        return state->getPath();
-    }
-	set<HEdge> getPathVertices() {
-       vector<unsigned int> path = state->getPath();
-	   set<HEdge> s;
-
-       for(unsigned int i=0;i<path.size()-1;i++) {
-		   
-		   s.insert(HEdge(path[i],path[i+1],i));
-           cout << path[i] << " ";
-       }
-       cout << endl;
-	   return s;
-	}
-	
-};
 
 class CLIArgumentsParser {
 public:
@@ -338,223 +38,445 @@ public:
 	}
 };
 
-int main(int argc, char** argv) {
+class CPU {
+	vector<VTYPE>::iterator startdata;
+	vector<VTYPE>::iterator enddata;
+	vector<VTYPE> temp;
 
-    const int STATES_PER_WORKER = 20;
-    const int STATES_PER_THREAD= 15;
+public:
+	CPU(vector<VTYPE>::iterator startdata, vector<VTYPE>::iterator enddata, size_t maxbucket):temp(2*maxbucket) {
+		this->startdata = startdata;
+		this->enddata = enddata;
+	}
+	void sort(bool reverse) {
+		if(reverse)
+			std::sort(this->startdata, this->enddata, std::greater<VTYPE>());
+		else
+			std::sort(this->startdata, this->enddata);
+	}
+	void mergesplit(CPU * other, bool reverse) {
+		if(reverse)
+			std::merge(this->startdata, this->enddata, other->startdata, other->enddata, this->temp.begin(), greater<VTYPE>());
+		else
+			std::merge(this->startdata, this->enddata, other->startdata, other->enddata, this->temp.begin());
+		
+		vector<VTYPE>::iterator tempit = this->temp.begin();
+		for(vector<VTYPE>::iterator i = this->startdata; i != this->enddata; ++i,++tempit) {
+			*i = *tempit;
+		}
+		for(vector<VTYPE>::iterator i = other->startdata; i != other->enddata; ++i,++tempit) {
+			*i = *tempit;
+		}
+	}
+	void printData(char delim = ' ', ostream & out = cout) {
+		for(vector<VTYPE>::iterator i = this->startdata;i!=this->enddata; i++) {
+			out << *i << delim;
+		}
+	}
+	void printDataReverse(char delim = ' ', ostream & out = cout) {
+		if(this->startdata == this->enddata)
+			return;
+		for(vector<VTYPE>::iterator i = this->enddata-1;i!=this->startdata; i--) {
+			out << *i << delim;
+		}
+		out << *(this->startdata) << delim;
+	}
+};
 
-    char * filename = CLIArgumentsParser::getCmdOption(argv, argv + argc, "-f");
+class Coordinates {
+public:
+	int x;
+	int y;
+	int z;
 
-    if (!filename) {
-        cout << "Chybi argument -f se souborem grafu" << endl;
-		return -1;
+	Coordinates(int x, int y, int z) {
+		this->x = x;
+		this->y = y;
+		this->z = z;
+	}
+	Coordinates& operator+=(const Coordinates& rhs) {
+		this->x += rhs.x;
+		this->y += rhs.y;
+		this->z += rhs.z;
+		return *this;
+	}
+	Coordinates& operator*=(const int& rhs) {
+		this->x *= rhs;
+		this->y *= rhs;
+		this->z *= rhs;
+		return *this;
+	}
+	Coordinates operator+(const Coordinates& rhs) const{
+		Coordinates n = (*this);
+		n += rhs;
+	    return n;
+	}
+	Coordinates operator*(const int& rhs) const{
+		Coordinates n = (*this);
+		n *= rhs;
+	    return n;
+	}
+};
+
+static const Coordinates XVector(1,0,0);
+static const Coordinates YVector(0,1,0);
+static const Coordinates ZVector(0,0,1);
+
+class CPUMatrix {
+	size_t x,y,z = 0;
+    vector<CPU*> CPUs;
+	size_t bucket = 0;
+
+public:
+	CPUMatrix(char * dimensions, vector<VTYPE> &numbers) {
+		stringstream ss;
+		ss<< dimensions;
+		int x = 1,y = 1,z = 1;
+		ss >> x;
+		if(ss.peek() == 'x') {
+			ss.ignore();
+		}
+		else {
+			throw "spatny format dimenzi mantice ma byt NxN[xN]";
+		}
+		ss >> y;
+		if(ss.good()) {
+			if(ss.peek() == 'x') {
+				ss.ignore();
+			}
+			else {
+				throw "spatny format dimenzi mantice ma byt NxN[xN]";
+			}
+			ss >> z;
+		}
+		cout << "Dimenze jsou " << x << "x" << y <<"x"<<z<<endl;
+        if(x<1 || y<1 || z<1) {
+            throw "Dimenze musi byt kladne!";
+        }
+        this->CPUs.resize(x*y*z);
+		init(x,y,z, numbers);
+	}
+	CPUMatrix(int x, int y, int z, vector<VTYPE> &numbers): CPUs(x*y*z) {
+       init(x,y,z,numbers); 
+    }
+	void init(int x, int y, int z, vector<VTYPE> &numbers) {
+		this->x = x;
+		this->y=y;
+		this->z = z;
+		
+		if(numbers.size() < CPUs.size()) {
+			cout << "Grid procesoru je vetsi nez pocet cisel...fail" << endl;
+			throw "grid procesoru je vetsi nez pocet cisel";
+		}
+		size_t bucket = numbers.size()/this->CPUs.size()+ (numbers.size() % this->CPUs.size() != 0);
+		this->bucket = bucket;
+
+		int pos = 0;
+		for(vector<CPU*>::iterator i = this->CPUs.begin(); i!=this->CPUs.end(); ++i,++pos) {
+			//handle crazy case where there are cpus with no numbers
+			if(pos*bucket > numbers.size()) {
+				cout << "Warning, cpus without work..." << endl;
+				*i = new CPU(numbers.end(), numbers.end(), bucket);
+			}
+			else if((pos+1)*bucket > numbers.size()) {
+				*i = new CPU(numbers.begin()+pos*bucket, numbers.end(), bucket);
+			}
+			else {
+				*i = new CPU(numbers.begin()+pos*bucket, numbers.begin()+(pos+1)*bucket, bucket);
+			}
+		}
+	}
+    CPU*& get(size_t x, size_t y, size_t z) {
+		if(!this->coorValid(x,y,z)) {
+			throw "mimo rozmer procesoru";
+		}
+        return CPUs.at(x + y * this->x + z * this->x * this->y);
+    }
+    CPU*& get(Coordinates c) {
+        return this->get(c.x,c.y,c.z);
+    }
+	size_t getBucketSize() {
+		return this->bucket;
+	}
+	bool coorValid(size_t x, size_t y, size_t z) {
+		if(x>=this->x || y>=this->y || z>=this->z) {
+			return false;
+		}
+		return true;
+	}
+	CPU*& get(size_t i) {
+		return CPUs.at(i);
+	}
+	size_t size(){
+		return this->CPUs.size();
+	}
+	size_t sizeForVector(Coordinates vector) {
+		return this->x*vector.x+this->y*vector.y+this->z*vector.z;
+	}
+	void printMatrix() {
+		for(size_t z=0;z<this->z; z++) {
+			cout << "-----------------------" << endl;
+			for(int y = this->y-1;y>=0;y--) {
+				cout << endl;
+				for(size_t x=0;x<this->x;x++) {
+					cout << "|";
+					this->get(x,y,z)->printData();
+					cout << "|";
+				}
+				cout << endl;
+			}
+			cout << "-----------------------" << endl;
+		}
+	}
+};
+size_t logbin(size_t number) {
+	size_t ret = 0;
+	while (number >>= 1) { ++ret; }
+	return ret;
+}
+void eotSortOpenMP(Coordinates line, Coordinates dynvector, CPUMatrix * matrix, bool reverse = false, bool justOneRun = false) {
+
+	size_t dimension_size = matrix->sizeForVector(dynvector);
+	//locally sort
+	#pragma omp parallel num_threads(dimension_size)
+	{
+		#pragma omp for
+		for(size_t i=0; i<dimension_size; i++) {
+			matrix->get(line+dynvector*i)->sort(reverse);
+		}
+	}
+    size_t runtimes;
+    if(justOneRun) {
+        runtimes = 1;
+    }
+    else {
+		runtimes = dimension_size/2+1;
+    }
+	//TODO: prozkoumat to +1
+	for(size_t count=0;count<runtimes;count++) {
+		#pragma omp parallel num_threads(dimension_size/2)
+		{
+			//even pairs
+			#pragma omp for
+			for(size_t i =0; i<dimension_size-1; i+=2) {
+				matrix->get(line+dynvector*i)->mergesplit(matrix->get(line+dynvector*(i+1)), reverse);
+			}
+			#pragma omp barrier
+			//odd pairs
+			#pragma omp for
+			for(size_t i=1; i<dimension_size-1; i+=2) {
+				matrix->get(line+dynvector*i)->mergesplit(matrix->get(line+dynvector*(i+1)), reverse);
+			}
+		}
+	}
+}
+void shearSortOpenMP(Coordinates plane, Coordinates rowvector, Coordinates colvector, CPUMatrix * matrix, bool reverse = false) {
+
+	size_t rowsize = matrix->sizeForVector(rowvector);
+	size_t colsize = matrix->sizeForVector(colvector);
+	for(size_t count=0;count<logbin(colsize)+2;count++) {
+
+		//faze schvalne opacne, posledni musi vzdy byt snake faze
+		#pragma omp parallel num_threads(rowsize)
+		{
+			//down phase
+			#pragma omp for
+			for(size_t i=0; i<rowsize; i++) {
+				eotSortOpenMP(plane+rowvector*i, colvector, matrix, reverse);
+			}
+		}
+
+		#pragma omp parallel num_threads(colsize)
+		{
+			//snake phase
+			#pragma omp for
+			for(size_t i =0; i<colsize; i++) {
+				if(i%2==0)
+					eotSortOpenMP(plane+colvector*i, rowvector, matrix, reverse);
+				else
+					eotSortOpenMP(plane+colvector*i, rowvector, matrix, !reverse);
+			}
+		}
+	}
+}
+void dSortOpenMP(CPUMatrix * matrix, bool reverse = false) {
+
+	size_t xsize = matrix->sizeForVector(XVector);
+	size_t ysize = matrix->sizeForVector(YVector);
+	size_t zsize = matrix->sizeForVector(ZVector);
+    Coordinates zero(0,0,0);
+	#pragma omp parallel num_threads(zsize)
+    {
+		#pragma omp for
+		for(size_t xyplane=0;xyplane<zsize;xyplane++) {
+			shearSortOpenMP(zero+ZVector*xyplane, XVector, YVector, matrix, reverse);
+		}
+    }
+	#pragma omp parallel num_threads(xsize)
+    {
+		#pragma omp for
+		for(size_t yzplane=0;yzplane<xsize;yzplane++) {
+			shearSortOpenMP(zero+XVector*yzplane, ZVector, YVector, matrix, reverse);
+		}
+    }
+	#pragma omp parallel num_threads(ysize)
+    {
+		#pragma omp for
+		for(size_t xzplane=0;xzplane<ysize;xzplane++) {
+            if(xzplane%2 == 0) {
+				shearSortOpenMP(zero+YVector*xzplane, XVector, ZVector, matrix, reverse);
+            }
+			else {
+				shearSortOpenMP(zero+YVector*xzplane, XVector, ZVector, matrix, !reverse);
+            }
+		}
+    }
+	#pragma omp parallel num_threads(xsize*zsize)
+    {
+		#pragma omp for
+		for(size_t column=0;column<xsize*zsize;column++) {
+			eotSortOpenMP(zero+XVector*(column%xsize)+ZVector*(column/xsize), YVector, matrix,reverse,true);
+		}
+    }
+	#pragma omp parallel num_threads(ysize)
+    {
+		#pragma omp for
+		for(size_t xzplane=0;xzplane<ysize;xzplane++) {
+			shearSortOpenMP(zero+YVector*xzplane, XVector, ZVector, matrix, reverse);
+		}
     }
 
-    Graph * graf;
-    int res = FileGraphLoader::load(filename, &graf);
-    if(res != 0) {
-        cout << "chyba nacitani grafu ze souboru" << endl;
-        return -1;
+}
+
+void readFile(char * filename, vector<VTYPE> &data) {
+	ifstream inputFile(filename, std::ifstream::in);
+
+	if (inputFile) {        
+    	VTYPE value;
+
+		while ( inputFile >> value ) {
+			data.push_back(value);
+		}
+        if(!inputFile.eof()) {
+			throw "chyba nacitani dat ze souboru - fakt tam jsou jen cisla?";
+        }
+		inputFile.close();
     }
+    else {
+        throw "chyba nacitani dat ze souboru";
+    }
+}
 
-	bool graphviz = CLIArgumentsParser::cmdOptionExists(argv, argv+argc, "-g");
-    bool solved = false;
+void writeFile(char * filename, vector<VTYPE>& data) {
+	streambuf * buf;
+	ofstream of;
 
-	MPI::Init();
-    int groupSize = MPI::COMM_WORLD.Get_size();
-    int myID = MPI::COMM_WORLD.Get_rank();
-	
-	if(CLIArgumentsParser::cmdOptionExists(argv, argv+argc, "-G")) {
-		if(myID == 0)
-			graf->printToDot();
-		return 0;
+	if(filename) {
+		of.open(filename);
+		buf = of.rdbuf();
+	} else {
+		buf = std::cout.rdbuf();
 	}
 
-    if(groupSize < 2) {
-        cout << "Tento program neumi bezet pouze s jednim nodem..." << endl;
-        return -1;
-    }
-
-    
-   	if(myID == 0) {
-		cout << "Vypocetnich nodu:" << groupSize << endl;
-		SearchState * state = new SearchState();
-		state->pushNode(0);
-
-		BFSStateGenerator * gen = new BFSStateGenerator();
-		gen->generateStates(state, graf, groupSize*STATES_PER_WORKER);
-		
-        MPI::Status s;
-        std::vector<bool> activeNodes(groupSize,true);
-        bool answered = false;
-        bool running= true;
-        while(running) {
-            MPI::COMM_WORLD.Probe(MPI::ANY_SOURCE, MPI::ANY_TAG, s);
-            switch(s.Get_tag()) {
-                case 10: //requesting work
-                {
-                    cout << "Node " << s.Get_source() << " pozaduje praci" << endl;
-                    MPI::COMM_WORLD.Recv(NULL, 0,MPI::INT, s.Get_source(), s.Get_tag());
-                    if(gen->hasState()) {
-                        SearchState * stateToPass = gen->getNextState();
-                        MPI::COMM_WORLD.Send(stateToPass->asArray(), stateToPass->getPathLength(), MPI::UNSIGNED, s.Get_source(), 10);
-                        delete stateToPass;
-                    }
-                    else {
-                        MPI::COMM_WORLD.Send(NULL, 0, MPI::UNSIGNED, s.Get_source(), 10);
-                        activeNodes[s.Get_source()] = false;
-                        activeNodes[0] = false;
-                    }
-                }
-                    break;
-                case 20: //ending computation
-                {	
-                    int count =s.Get_count(MPI::UNSIGNED);
-                    if(count > 1 && !answered) { //first to arrive with data
-                        answered = true;
-                        activeNodes[0] = false;
-                        activeNodes[s.Get_source()] = false;
-						cout << "Node " << s.Get_source() << " nasel vysledek!" << endl;
-						unsigned int * arr = new unsigned int[count];
-						MPI::COMM_WORLD.Recv(arr, count, MPI::UNSIGNED, s.Get_source(), s.Get_tag());
-
-						SearchState * state = new SearchState();
-						for(int i=0;i<count;i++) {
-							state->pushNode(arr[i]);
-						}
-                        delete[] arr;
-						state->printPath();
-                        solved = true;
-                        if(graphviz) {
-							graf->printToDot(state->getPath());
-                        }
-						cout << "Ukoncuji vypocet" << endl;
-						gen->clear();
-                        for(int i=1;i<groupSize;i++) {
-                           if(!activeNodes[i]) {
-                               continue;
-                           }
-                           MPI::COMM_WORLD.Send(NULL, 0, MPI::UNSIGNED, i, 20); 
-                        }
-                    }
-                    else { //drop all others
-						unsigned int * arr = new unsigned int[count];
-                        MPI::COMM_WORLD.Recv(arr, count, MPI::UNSIGNED, s.Get_source(), s.Get_tag());
-                        delete[] arr;
-                        activeNodes[s.Get_source()] = false;
-                    }
- 				}                   
-
-                    break;
-                default:
-                    cout << "Neznama zprava! Panika!" << endl;
-            }
-			
-            running = false;
-            for(unsigned int i=0;i<activeNodes.size();i++){
-               if(activeNodes[i]) {
-                   running = true;
-               } 
-            }
-        }
-
-		if(!solved && graphviz) {
-			graf->printToDot();
+	ostream out(buf);
+	
+	if (out) {        
+		for(vector<VTYPE>::iterator i = data.begin(); i!=data.end(); i++) {
+			out << *i << endl;
 		}
-    } 
-    else {//I am worker
-        MPI::Status s;
-		MPI::COMM_WORLD.Send(NULL, 0, MPI::UNSIGNED, 0, 10); //request work
-		
-        bool workerRun = true;
-        while(workerRun) {
-			MPI::COMM_WORLD.Probe(MPI::ANY_SOURCE, MPI::ANY_TAG, s);
-			switch(s.Get_tag()) {
-				case 10:
-				{	
-					int count =s.Get_count(MPI::UNSIGNED);
-                    if(count < 1) {
-                        workerRun = false;
-                        break;
-                    }
-					unsigned int * arr = new unsigned int[count];
-					MPI::COMM_WORLD.Recv(arr, count, MPI::UNSIGNED, s.Get_source(), s.Get_tag());
-
-					SearchState * state = new SearchState();
-					for(int i=0;i<count;i++) {
-						state->pushNode(arr[i]);
-					}
-                    delete[] arr;
-//                    {
-//    int i = 7;
-//    char hostname[256];
-//    gethostname(hostname, sizeof(hostname));
-//    printf("PID %d on %s ready for attach\n", getpid(), hostname);
-//    fflush(stdout);
-//    while (0 == i)
-//        sleep(5);
-//}
-
-					cout << "Node " << myID << " prijal praci:";
-					state->printPath();
-
-                    BFSStateGenerator * gen = new BFSStateGenerator();
-					gen->generateStates(state, graf, 4*STATES_PER_THREAD);
-					cout << "Node " << myID << " nageneroval " << gen->getStatesCount() << " stavu pro lokalni vlakna." <<endl;
-					bool askedForWork = false;
-
-					#pragma omp parallel
-                    {
-                        while(workerRun) {
-							SearchState * parState = NULL;
-							#pragma omp critical(comm)
-							{
-								if(gen->hasState()) {
-									parState = gen->getNextState();
-								}
-								else {
-									if(!askedForWork) {
-										askedForWork = true;
-										MPI::COMM_WORLD.Send(NULL, 0, MPI::UNSIGNED, 0, 10); //request work
-									}
-								}
-							}
-							if(parState != NULL) {
-								DFSStateSolver * solver = new DFSStateSolver(parState, graf);
-								if(solver->solve(workerRun)) {
-									#pragma omp critical(comm)
-									{
-										if(workerRun) {
-											workerRun = false;
-											MPI::COMM_WORLD.Send(solver->getPath().data(), solver->getPath().size(), MPI::UNSIGNED, 0, 20);
-										}
-									}
-								}
-								delete solver;
-							}
-                            else {
-                                break;
-                            }
-                        }
-                    }
-
-                    delete gen;
-				}
-				break;
-                case 20:
-                {
-					MPI::COMM_WORLD.Recv(NULL, 0, MPI::UNSIGNED, s.Get_source(), s.Get_tag());
-					MPI::COMM_WORLD.Send(NULL, 0, MPI::UNSIGNED, 0, 20);
-					workerRun = false;
-                }
-                break;
-			}
-        }
     }
-
-	//cout << "Node " << myID << " konci." << endl;
-    MPI::Finalize();
-
-
-    return 0;
+    else {
+        throw "chyba vypisu dat";
+    }
 }
+void getOutStream(char * filename, ostream &ost){
+}
+void writeFileSnake(ostream &out, Coordinates plane, Coordinates rowvector, Coordinates colvector, CPUMatrix * matrix) {
+	
+	if (out) {
+		size_t rows = matrix->sizeForVector(colvector);
+		size_t cols = matrix->sizeForVector(rowvector);
+		for(size_t row =0;row<rows;row++) {
+			if(row%2==0) {
+				for(size_t col = 0; col<cols;col++) {
+					matrix->get(plane+rowvector*col+colvector*row)->printData('\n', out);
+				}
+			}
+			else {
+				for(size_t col = cols-1; col>0;col--) {
+					matrix->get(plane+rowvector*col+colvector*row)->printDataReverse('\n', out);
+				}
+				matrix->get(plane+colvector*row)->printDataReverse('\n', out);
+			}
+		}
+
+    }
+    else {
+        throw "chyba vypisu dat";
+    }
+}
+
+int main(int argc, char** argv) {
+	omp_set_nested(1);
+
+	try {
+		char * filename = CLIArgumentsParser::getCmdOption(argv, argv + argc, "-f");
+		if (!filename) {
+			cout << "Chybi argument -f se souborem cisel" << endl;
+			return -1;
+		}
+		char * output = CLIArgumentsParser::getCmdOption(argv, argv + argc, "-o");
+		streambuf * buf;
+		ofstream of;
+
+		if(output) {
+			of.open(output);
+			buf = of.rdbuf();
+		} else {
+			buf = std::cout.rdbuf();
+		}
+
+		ostream outputStream(buf);
+
+
+		char * dimensions = CLIArgumentsParser::getCmdOption(argv, argv + argc, "-S");
+		if(dimensions) {
+			//SHEAR
+			vector<VTYPE> data;
+			readFile(filename, data);
+
+			CPUMatrix matrix(dimensions, data);
+            if(matrix.sizeForVector(ZVector) != 1) {
+                cout << "Shear funguje jen na 2d mrizce..." << endl;
+                return -1;
+            }
+			shearSortOpenMP(Coordinates(0,0,0), XVector, YVector,&matrix);
+			writeFileSnake(outputStream, Coordinates(0,0,0), XVector,YVector, &matrix);
+			return 0;
+		}
+
+		
+		dimensions = CLIArgumentsParser::getCmdOption(argv, argv + argc, "-3");
+		if(dimensions) {
+			//3D
+			vector<VTYPE> data;
+			readFile(filename, data);
+
+
+			CPUMatrix matrix(dimensions, data);
+            dSortOpenMP(&matrix, false);
+			for(size_t xzplanes=0;xzplanes<matrix.sizeForVector(YVector); xzplanes++) {
+				writeFileSnake(outputStream, Coordinates(0,0,0)+YVector*xzplanes, XVector,ZVector, &matrix);
+            }
+			return 0;
+		}
+
+		cout << "Nespecifikovan ani shear (-S) ani 3dsort (-3). Syntax [-S|-3] NxN[xN] -- rozmer matice procesoru" << endl;
+		return -1;
+
+	}
+	catch (char const * e) {
+		cout << e << endl;
+		return -1;
+	}
+} 

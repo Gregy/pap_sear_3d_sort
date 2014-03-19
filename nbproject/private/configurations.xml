@@ -25,8 +25,11 @@
       <runprofile version="9">
         <runcommandpicklist>
           <runcommandpicklistitem>"${OUTPUT_PATH}"</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -f /home/gregy/Data/CVUT/PAP/Sorty/test -S 3x3</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -f /home/gregy/Data/CVUT/PAP/Sorty/test -3 3x3x3</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH}" -f /home/gregy/Data/CVUT/PAP/Sorty/test -3 3x4x2</runcommandpicklistitem>
         </runcommandpicklist>
-        <runcommand>"${OUTPUT_PATH}"</runcommand>
+        <runcommand>"${OUTPUT_PATH}" -f /home/gregy/Data/CVUT/PAP/Sorty/test -3 3x4x2</runcommand>
         <rundir></rundir>
         <buildfirst>true</buildfirst>
         <console-type>1</console-type>

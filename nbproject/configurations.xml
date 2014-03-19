@@ -38,7 +38,6 @@
       <compileType>
         <ccTool>
           <standard>8</standard>
-          <commandlineTool>mpiCC</commandlineTool>
           <incDir>
             <pElem>/usr/include/mpi</pElem>
           </incDir>
