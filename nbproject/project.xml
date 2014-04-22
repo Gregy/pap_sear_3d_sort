@@ -5,7 +5,7 @@
         <data xmlns="http://www.netbeans.org/ns/make-project/1">
             <name>Sorty</name>
             <c-extensions/>
-            <cpp-extensions>cpp</cpp-extensions>
+            <cpp-extensions>cu</cpp-extensions>
             <header-extensions/>
             <sourceEncoding>UTF-8</sourceEncoding>
             <make-dep-projects/>
@@ -17,6 +17,10 @@
                 </confElem>
                 <confElem>
                     <name>Release</name>
+                    <type>1</type>
+                </confElem>
+                <confElem>
+                    <name>cuda</name>
                     <type>1</type>
                 </confElem>
             </confList>

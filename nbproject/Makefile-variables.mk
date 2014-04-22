@@ -22,6 +22,14 @@ CND_ARTIFACT_PATH_Release=dist/Release/GNU-Linux-x86/sorty
 CND_PACKAGE_DIR_Release=dist/Release/GNU-Linux-x86/package
 CND_PACKAGE_NAME_Release=sorty.tar
 CND_PACKAGE_PATH_Release=dist/Release/GNU-Linux-x86/package/sorty.tar
+# cuda configuration
+CND_PLATFORM_cuda=GNU-Linux-x86
+CND_ARTIFACT_DIR_cuda=dist/cuda/GNU-Linux-x86
+CND_ARTIFACT_NAME_cuda=sorty
+CND_ARTIFACT_PATH_cuda=dist/cuda/GNU-Linux-x86/sorty
+CND_PACKAGE_DIR_cuda=dist/cuda/GNU-Linux-x86/package
+CND_PACKAGE_NAME_cuda=sorty.tar
+CND_PACKAGE_PATH_cuda=dist/cuda/GNU-Linux-x86/package/sorty.tar
 #
 # include compiler specific variables
 #
