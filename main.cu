@@ -18,10 +18,21 @@
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 #include "cuPrintf.cu"
+#include <sys/time.h>
 #define VTYPE int
 
 using namespace std;
 
+
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, char *file, int line, bool abort=true)
+{
+   if (code != cudaSuccess) 
+   {
+      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+      if (abort) exit(code);
+   }
+}
 
 class CLIArgumentsParser {
 public:
@@ -291,6 +302,8 @@ __global__ void eotSortIterationCuda(CPU * d_cpu, VTYPE* d_data, Coordinates dir
 		mergeAndSplit(d_data, d_temp,d_cpu[myindex].tempindex,d_cpu[myindex].startindex, d_cpu[myindex].endindex, d_cpu[oindex].startindex, d_cpu[oindex].endindex);
 	}
 }
+
+//knihovni implementace heapsortu
 __global__ void localSort(CPU * d_cpu, VTYPE * d_data) {
 	int vSize = d_cpu[getCpuIndex()].endindex - d_cpu[getCpuIndex()].startindex;
 	VTYPE * vec = d_data+d_cpu[getCpuIndex()].startindex;
@@ -467,10 +480,13 @@ int main(int argc, char** argv) {
                 cout << "Shear funguje jen na 2d mrizce..." << endl;
                 return -1;
             }
+            struct timeval time;
+            gettimeofday(&time, NULL);
+            double t1=time.tv_sec+(time.tv_usec/1000000.0);
 			//CUDA INIT
 			CPU * d_cpu;
 			const size_t sz = size_t(matrix.CPUs.size()) * sizeof(CPU);
-			cudaMalloc((void**)&d_cpu, sz);
+			gpuErrchk(cudaMalloc((void**)&d_cpu, sz));
 			cudaMemcpy(d_cpu, matrix.CPUs.data(), sz, cudaMemcpyHostToDevice);
 			//copy data to gpu
 			VTYPE * d_data;
@@ -482,13 +498,15 @@ int main(int argc, char** argv) {
 			const size_t st = 2*matrix.bucket * sizeof(VTYPE)*matrix.CPUs.size();
 			cudaMalloc((void**)&d_temp, st);
 			localSort<<<dim3(matrix.sizeForVector(XVector), matrix.sizeForVector(YVector),1), matrix.sizeForVector(ZVector)>>> (d_cpu,d_data);
-
 			shearSortCuda(data, matrix,d_cpu,d_data,d_temp);
 
 			cudaPrintfDisplay(stdout, true);
 			cudaMemcpy(data.data(), d_data, sd, cudaMemcpyDeviceToHost);
-			matrix.printMatrix();
+            gettimeofday(&time, NULL);
+            double t2=time.tv_sec+(time.tv_usec/1000000.0);
+            printf("Sorting took %.6lf seconds\n", t2-t1);
 			writeFileSnake(outputStream, Coordinates(0,0,0), XVector,YVector, &matrix);
+
 			return 0;
 		}
         
