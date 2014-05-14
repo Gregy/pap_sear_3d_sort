@@ -2,7 +2,6 @@
  * File:   main.cpp
  * Author: gregy
  *
- * otazky: musi se lokalne seradit pred kazdym krokem shearsortu?
  */
 
 #include <cstdlib>
@@ -17,7 +16,6 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
-#include "cuPrintf.cu"
 #include <sys/time.h>
 #define VTYPE int
 
@@ -69,7 +67,7 @@ public:
 		}
 	}
 	void printDataReverse(int * data, char delim = ' ', ostream & out = cout) {
-		for(unsigned int i = endindex-1;i>=this->startindex; i--) {
+		for(unsigned int i = endindex-1;i>=this->startindex && i<endindex; i--) {
 			out << data[i] << delim;
 		}
 	}
@@ -229,26 +227,26 @@ size_t logbin(size_t number) {
 }
 
 __device__ int getCpuIndex(Coordinates override = Coordinates(0,0,0)) {
-	if(blockIdx.x+override.x >= gridDim.x || blockIdx.y+override.y >= gridDim.y || threadIdx.x+override.z > blockDim.x) {
+	if(threadIdx.x+override.x >= blockDim.x || blockIdx.x+override.y >= gridDim.x || blockIdx.y+override.z >= gridDim.y) {
 		return -1;
 	}
-	if(((int)blockIdx.x+override.x) < 0 || ((int)blockIdx.y+override.y) < 0 || ((int)threadIdx.x+override.z) < 0) {
+	if(((int)threadIdx.x+override.x) < 0 || ((int)blockIdx.x+override.y) < 0 || ((int)blockIdx.y+override.z) < 0) {
 		return -1;
 	}
-	return (blockIdx.x + override.x) + (blockIdx.y+override.y) * gridDim.x + (threadIdx.x+override.z) * gridDim.x * gridDim.y;
+	return (threadIdx.x + override.x) + (blockIdx.x+override.y) * blockDim.x + (blockIdx.y+override.z) * gridDim.x * blockDim.x;
 }
 __device__ int getIndexForVector(Coordinates vector) {
 	if(vector.x != 0)
-		return blockIdx.x;
-	if(vector.y != 0)
-		return blockIdx.y;
-	if(vector.z !=0)
 		return threadIdx.x;
+	if(vector.y != 0)
+		return blockIdx.x;
+	if(vector.z !=0)
+		return blockIdx.y;
 	
 	return -1;
 }
 
-__device__ void mergeAndSplit(VTYPE* d_data, VTYPE* d_temp, size_t tempindex,size_t list1min, size_t list1max, size_t list2min, size_t list2max) {
+__device__ inline void mergeAndSplit(VTYPE* d_data, VTYPE* d_temp, size_t tempindex,size_t list1min, size_t list1max, size_t list2min, size_t list2max) {
 	VTYPE * list3 = d_temp+tempindex;
 
 	int index1 = list1min, index2 = list2min, index3 = 0;
@@ -260,7 +258,8 @@ __device__ void mergeAndSplit(VTYPE* d_data, VTYPE* d_temp, size_t tempindex,siz
         // its upper bound already and make sure we 
         // don't compare outside bounds of the second 
         // array.
-        if ((d_data[index1] <= d_data[index2] && index1 < list1max) || index2 >= list2max) {
+        // order of conditions very important, otherwise outside of bounds access!
+        if (index2 >= list2max || (index1 < list1max && d_data[index1] <= d_data[index2]) ) {
             list3[index3] = d_data[index1];
             index1++;
         }
@@ -284,13 +283,21 @@ __device__ void mergeAndSplit(VTYPE* d_data, VTYPE* d_temp, size_t tempindex,siz
 		index3++;
 	}
 }
-__global__ void eotSortIterationCuda(CPU * d_cpu, VTYPE* d_data, Coordinates direction, VTYPE*d_temp,bool even, Coordinates snake = Coordinates(0,0,0)) {
+__global__ void eotSortIterationCuda(CPU * d_cpu, VTYPE* d_data, Coordinates direction, VTYPE*d_temp,bool even, Coordinates snake = Coordinates(0,0,0), bool reverse = false, Coordinates skipvector = Coordinates(0,0,0)) {
 	int myindex = getCpuIndex();
 	if(snake.x == 1 || snake.y ==1|| snake.z ==1) {
 		if(getIndexForVector(snake)%2 ==1) {
 			direction = direction * -1;
 		}
 	}
+	if(skipvector.x == 1 || skipvector.y ==1|| skipvector.z ==1) {
+		if(getIndexForVector(skipvector)%2 ==0) {
+			return;
+		}
+	}
+    if(reverse) {
+        direction = direction * -1;
+    }
 	int oindex = getCpuIndex(direction);
 	if(oindex < 0) {
 		return;
@@ -397,7 +404,7 @@ void writeFile(char * filename, vector<VTYPE>& data) {
         throw "chyba vypisu dat";
     }
 }
-void writeFileSnake(ostream &out, Coordinates plane, Coordinates rowvector, Coordinates colvector, CPUMatrix * matrix) {
+void writeFileSnake(ostream &out, Coordinates plane, Coordinates rowvector, Coordinates colvector, CPUMatrix * matrix, bool reverse = false) {
 	
 	if (out) {
 		size_t rows = matrix->sizeForVector(colvector);
@@ -405,14 +412,25 @@ void writeFileSnake(ostream &out, Coordinates plane, Coordinates rowvector, Coor
 		for(size_t row =0;row<rows;row++) {
 			if(row%2==0) {
 				for(size_t col = 0; col<cols;col++) {
-					matrix->get(plane+rowvector*col+colvector*row)->printData(matrix->numbers->data(),'\n', out);
+                    if(reverse) {
+						matrix->get(plane+rowvector*col+colvector*row)->printDataReverse(matrix->numbers->data(),'\n', out);
+                    }
+                    else {
+						matrix->get(plane+rowvector*col+colvector*row)->printData(matrix->numbers->data(),'\n', out);
+                    }
 				}
 			}
 			else {
 				for(size_t col = cols-1; col>0;col--) {
-					matrix->get(plane+rowvector*col+colvector*row)->printData(matrix->numbers->data(),'\n', out);
+                    if(reverse)
+						matrix->get(plane+rowvector*col+colvector*row)->printDataReverse(matrix->numbers->data(),'\n', out);
+					else
+						matrix->get(plane+rowvector*col+colvector*row)->printData(matrix->numbers->data(),'\n', out);
 				}
-				matrix->get(plane+colvector*row)->printData(matrix->numbers->data(),'\n', out);
+                if(reverse)
+					matrix->get(plane+colvector*row)->printDataReverse(matrix->numbers->data(),'\n', out);
+                else
+					matrix->get(plane+colvector*row)->printData(matrix->numbers->data(),'\n', out);
 			}
 		}
 
@@ -421,33 +439,46 @@ void writeFileSnake(ostream &out, Coordinates plane, Coordinates rowvector, Coor
         throw "chyba vypisu dat";
     }
 }
-void eotSortCuda(Coordinates dynvector, CPUMatrix &matrix, CPU * d_cpu, VTYPE * d_data, VTYPE * d_temp, Coordinates snake = Coordinates(0,0,0)) {
+void eotSortCuda(Coordinates dynvector, CPUMatrix &matrix, CPU * d_cpu, VTYPE * d_data, VTYPE * d_temp, Coordinates snake = Coordinates(0,0,0), bool reverse = false, Coordinates skipvector = Coordinates(0,0,0), size_t override_runs = 0) {
 
 	size_t dimension_size = matrix.sizeForVector(dynvector);
     size_t runtimes = dimension_size/2+1;
+	if(override_runs > 0) {
+		runtimes = override_runs;
+	}
 	//TODO: prozkoumat to +1
 	for(size_t count=0;count<runtimes;count++) {
 		//even pairs
-		eotSortIterationCuda<<<dim3(matrix.sizeForVector(XVector), matrix.sizeForVector(YVector),1), matrix.sizeForVector(ZVector)>>> (d_cpu,d_data, dynvector, d_temp,true, snake);
+		eotSortIterationCuda<<<dim3(matrix.sizeForVector(YVector), matrix.sizeForVector(ZVector),1), matrix.sizeForVector(XVector)>>> (d_cpu,d_data, dynvector, d_temp,true, snake, reverse, skipvector);
 		//odd pairs
-		eotSortIterationCuda<<<dim3(matrix.sizeForVector(XVector), matrix.sizeForVector(YVector),1), matrix.sizeForVector(ZVector)>>> (d_cpu,d_data, dynvector, d_temp,false, snake);
+		eotSortIterationCuda<<<dim3(matrix.sizeForVector(YVector), matrix.sizeForVector(ZVector),1), matrix.sizeForVector(XVector)>>> (d_cpu,d_data, dynvector, d_temp,false, snake, reverse, skipvector);
 	}
 }
 
-void shearSortCuda(vector<VTYPE> &data, CPUMatrix &matrix,CPU*d_cpu,VTYPE* d_data,VTYPE* d_temp) {
-	//copy cpu info to gpu
-
-	size_t rowsize = matrix.sizeForVector(XVector);
-	size_t colsize = matrix.sizeForVector(YVector);
+void shearSortCuda(vector<VTYPE> &data, CPUMatrix &matrix,CPU*d_cpu,VTYPE* d_data,VTYPE* d_temp, Coordinates xvector = XVector, Coordinates yvector = YVector, bool reverse = false, Coordinates skipvector = Coordinates(0,0,0)) {
+	size_t rowsize = matrix.sizeForVector(xvector);
+	size_t colsize = matrix.sizeForVector(yvector);
 	for(size_t count=0;count<logbin(colsize)+2;count++) {
-		eotSortCuda(YVector,matrix,d_cpu,d_data, d_temp);
-		eotSortCuda(XVector,matrix,d_cpu,d_data, d_temp, YVector);
+		eotSortCuda(yvector,matrix,d_cpu,d_data, d_temp, Coordinates(0,0,0), reverse, skipvector);
+		eotSortCuda(xvector,matrix,d_cpu,d_data, d_temp, yvector, reverse, skipvector);
 	}
 
+}
+void dSortCuda(vector<VTYPE> &data, CPUMatrix &matrix,CPU*d_cpu,VTYPE* d_data,VTYPE* d_temp) {
+
+	size_t xsize = matrix.sizeForVector(XVector);
+	size_t ysize = matrix.sizeForVector(YVector);
+	size_t zsize = matrix.sizeForVector(ZVector);
+    Coordinates zero(0,0,0);
+	shearSortCuda(data, matrix, d_cpu, d_data, d_temp, XVector, YVector);
+	shearSortCuda(data, matrix, d_cpu, d_data, d_temp, ZVector, YVector);
+	shearSortCuda(data, matrix, d_cpu, d_data, d_temp, XVector, ZVector, true);
+	shearSortCuda(data, matrix, d_cpu, d_data, d_temp, XVector, ZVector, false, YVector);
+	eotSortCuda(YVector,matrix,d_cpu,d_data, d_temp, Coordinates(0,0,0), false, Coordinates(0,0,0), 1);
+	shearSortCuda(data, matrix, d_cpu, d_data, d_temp, XVector, ZVector, false);
 }
 
 int main(int argc, char** argv) {
-	cudaPrintfInit();
 	try {
 		char * filename = CLIArgumentsParser::getCmdOption(argv, argv + argc, "-f");
 		if (!filename) {
@@ -497,10 +528,9 @@ int main(int argc, char** argv) {
 			VTYPE * d_temp;
 			const size_t st = 2*matrix.bucket * sizeof(VTYPE)*matrix.CPUs.size();
 			cudaMalloc((void**)&d_temp, st);
-			localSort<<<dim3(matrix.sizeForVector(XVector), matrix.sizeForVector(YVector),1), matrix.sizeForVector(ZVector)>>> (d_cpu,d_data);
-			shearSortCuda(data, matrix,d_cpu,d_data,d_temp);
+			localSort<<<dim3(matrix.sizeForVector(YVector), matrix.sizeForVector(ZVector),1), matrix.sizeForVector(XVector)>>> (d_cpu,d_data);
+			shearSortCuda(data, matrix,d_cpu,d_data,d_temp, XVector, YVector);
 
-			cudaPrintfDisplay(stdout, true);
 			cudaMemcpy(data.data(), d_data, sd, cudaMemcpyDeviceToHost);
             gettimeofday(&time, NULL);
             double t2=time.tv_sec+(time.tv_usec/1000000.0);
@@ -513,6 +543,42 @@ int main(int argc, char** argv) {
 		
 		dimensions = CLIArgumentsParser::getCmdOption(argv, argv + argc, "-3");
 		if(dimensions) {
+			//3DSort
+			vector<VTYPE> data;
+			readFile(filename, data);
+
+			CPUMatrix matrix(dimensions, data);
+            if(matrix.sizeForVector(ZVector) < 2) {
+                cout << "3d sort potrebuje z souradnici" << endl;
+                return -1;
+            }
+            struct timeval time;
+            gettimeofday(&time, NULL);
+            double t1=time.tv_sec+(time.tv_usec/1000000.0);
+			//CUDA INIT
+			CPU * d_cpu;
+			const size_t sz = size_t(matrix.CPUs.size()) * sizeof(CPU);
+			gpuErrchk(cudaMalloc((void**)&d_cpu, sz));
+			cudaMemcpy(d_cpu, matrix.CPUs.data(), sz, cudaMemcpyHostToDevice);
+			//copy data to gpu
+			VTYPE * d_data;
+			const size_t sd = size_t(data.size()) * sizeof(VTYPE);
+			cudaMalloc((void**)&d_data, sd);
+			cudaMemcpy(d_data, data.data(), sd, cudaMemcpyHostToDevice);
+			//docasny prostor pro merge
+			VTYPE * d_temp;
+			const size_t st = 2*matrix.bucket * sizeof(VTYPE)*matrix.CPUs.size();
+			cudaMalloc((void**)&d_temp, st);
+			localSort<<<dim3(matrix.sizeForVector(YVector), matrix.sizeForVector(ZVector),1), matrix.sizeForVector(XVector)>>> (d_cpu,d_data);
+			dSortCuda(data, matrix,d_cpu,d_data,d_temp);
+
+			cudaMemcpy(data.data(), d_data, sd, cudaMemcpyDeviceToHost);
+            gettimeofday(&time, NULL);
+            double t2=time.tv_sec+(time.tv_usec/1000000.0);
+            printf("Sorting took %.6lf seconds\n", t2-t1);
+            for(int y=0;y<matrix.sizeForVector(YVector);y++) {
+				writeFileSnake(outputStream, Coordinates(0,y,0), XVector,ZVector, &matrix);
+            }
 			return 0;
 		}
 
