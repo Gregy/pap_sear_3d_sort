@@ -246,7 +246,7 @@ __device__ int getIndexForVector(Coordinates vector) {
 	return -1;
 }
 
-__device__ inline void mergeAndSplit(VTYPE* d_data, VTYPE* d_temp, size_t tempindex,size_t list1min, size_t list1max, size_t list2min, size_t list2max) {
+__device__ void mergeAndSplit(VTYPE* d_data, VTYPE* d_temp, size_t tempindex,size_t list1min, size_t list1max, size_t list2min, size_t list2max) {
 	VTYPE * list3 = d_temp+tempindex;
 
 	int index1 = list1min, index2 = list2min, index3 = 0;
@@ -572,7 +572,7 @@ int main(int argc, char** argv) {
 			localSort<<<dim3(matrix.sizeForVector(YVector), matrix.sizeForVector(ZVector),1), matrix.sizeForVector(XVector)>>> (d_cpu,d_data);
 			dSortCuda(data, matrix,d_cpu,d_data,d_temp);
 
-			cudaMemcpy(data.data(), d_data, sd, cudaMemcpyDeviceToHost);
+			gpuErrchk(cudaMemcpy(data.data(), d_data, sd, cudaMemcpyDeviceToHost));
             gettimeofday(&time, NULL);
             double t2=time.tv_sec+(time.tv_usec/1000000.0);
             printf("Sorting took %.6lf seconds\n", t2-t1);
